@@ -1,159 +1,159 @@
-# Turborepo starter
+# LinkedIn Profile Search
 
-This Turborepo starter is maintained by the Turborepo core team.
+Monorepo for the Cyberyan technical assessment: a NestJS API backed by PostgreSQL and Elasticsearch, with a React frontend for searching ~300 LinkedIn profiles.
 
-## Using this example
-
-Run the following command:
+## Quick Start
 
 ```sh
-npx create-turbo@latest
+docker compose up --build
 ```
 
-## What's inside?
+This starts:
 
-This Turborepo includes the following packages/apps:
+- PostgreSQL on `localhost:5432`
+- Elasticsearch on `localhost:9200`
+- API on `http://localhost:3000`
 
-### Apps and Packages
+The API container runs migrations, seeds the LinkedIn dataset idempotently, and starts the server.
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `@next/eslint-plugin-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+## Local Development
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+1. Start infrastructure:
 
 ```sh
-cd my-turborepo
-turbo build
+docker compose up postgres elasticsearch -d
 ```
 
-Without global `turbo`, use your package manager:
+2. Configure environment:
 
 ```sh
-cd my-turborepo
-npx turbo build
-pnpm exec turbo build
-pnpm exec turbo build
+cp apps/api/.env.example apps/api/.env
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+3. Install dependencies and prepare the database:
 
 ```sh
-turbo build --filter=docs
+pnpm install
+pnpm --filter api db:generate
+pnpm --filter api db:migrate:deploy
+pnpm --filter api db:seed
 ```
 
-Without global `turbo`:
+4. Run the API:
 
 ```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+pnpm --filter api dev
 ```
 
-### Develop
+## API Documentation
 
-To develop all apps and packages, run the following command:
+With the API running on **http://localhost:3000**:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+| URL | Description |
+|-----|-------------|
+| `/` | API entrypoint with route links |
+| `/health` | Health check |
+| `/profiles/search` | Search profiles |
+| `/profiles/facets` | Facet values for filters |
+| `/docs` | **Scalar** interactive API reference |
+| `/swagger` | **Swagger UI** |
+| `/swagger/json` | OpenAPI JSON spec |
+
+**Testing in Scalar:** click **Test Request** on `GET /profiles/search`, then use the **Query Parameters** panel on the right. Enter values there (e.g. `q=recruiting`, `industry=Civil Engineering`) before sending. Facet values are Title Case — use `/profiles/facets` to see valid options. Lowercase values are auto-normalized.
+
+Example search:
 
 ```sh
-cd my-turborepo
-turbo dev
+curl "http://localhost:3000/profiles/search?q=recruiting&industry=Civil%20Engineering"
 ```
 
-Without global `turbo`, use your package manager:
+## API Endpoints
+
+### `GET /profiles/search`
+
+Search profiles with keyword and facet filters.
+
+Query parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `q` | string | Keyword search across name, summary, skills, interests, job title |
+| `industry` | string[] | Filter by industry (repeat param or comma-separated) |
+| `jobTitle` | string[] | Filter by job title |
+| `jobCompanyName` | string[] | Filter by company |
+| `jobCompanyIndustry` | string[] | Filter by company industry |
+| `locationName` | string[] | Filter by location |
+| `locationCountry` | string[] | Filter by country |
+| `locationRegion` | string[] | Filter by region/state |
+| `gender` | string[] | Filter by gender |
+| `jobTitleRole` | string[] | Filter by job title role |
+| `skills` | string[] | Filter by skills (AND with other filters) |
+| `interests` | string[] | Filter by interests |
+| `minYearsExperience` | number | Minimum years of experience |
+| `maxYearsExperience` | number | Maximum years of experience |
+| `minSalary` | number | Minimum inferred salary |
+| `maxSalary` | number | Maximum inferred salary |
+| `page` | number | Page number (default: 1) |
+| `limit` | number | Page size (default: 20, max: 100) |
+
+Example:
 
 ```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+curl "http://localhost:3000/profiles/search?q=recruiting&industry=Civil%20Engineering&jobTitle=Recruiting%20Manager"
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+### `GET /profiles/facets`
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Returns facet values for dropdown filters. Accepts the same filter parameters as search so facet counts reflect the current query context.
+
+## Data Ingestion Strategy
+
+### Why PostgreSQL
+
+The LinkedIn dataset is highly structured: each row maps cleanly to a relational profile with scalar fields (`industry`, `jobTitle`, `locationCountry`) and JSON arrays (`skills`, `interests`). PostgreSQL gives us durable storage, unique constraints on `linkedinId`, and B-tree indexes on the exact-match fields used by dropdown filters.
+
+### Why Elasticsearch
+
+Global keyword search and multi-facet filtering are Elasticsearch strengths. After profiles are cleaned and stored in PostgreSQL, they are indexed into Elasticsearch for fast full-text search across `fullName`, `summary`, `skills`, and `interests`, plus conjunctive facet filtering.
+
+### ETL Pipeline
+
+The seed script treats ingestion as ETL:
+
+1. **Extract** — stream `docs/300 user linkedin.txt` with `csv-parser` to avoid loading the full file into memory.
+2. **Transform** — sanitize each row:
+   - convert Python-style arrays like `['manager']` into real JSON arrays
+   - map empty strings and `None` to database `NULL`
+   - title-case `industry`, `jobTitle`, and related facet labels for consistent dropdown grouping
+   - parse salary ranges like `85,000-100,000` into numeric min/max values
+3. **Load** — upsert into PostgreSQL by `linkedinId`, then bulk-index into Elasticsearch using the same identifier as the document `_id`.
+
+### Idempotent Seeding
+
+The seed script uses `prisma.profile.upsert()` keyed on `linkedinId`. Running it once or many times leaves the database in the same correct state without duplicate rows or unique-constraint crashes. Elasticsearch documents are indexed with the same `linkedinId` as `_id`, so re-seeding overwrites existing documents instead of duplicating them.
+
+### Indexing Choices
+
+Prisma indexes:
+
+- `industry`, `jobTitle` — exact-match dropdown filters
+- `jobCompanyName`, `locationCountry`, `gender`, `jobTitleRole` — additional facet filters
+
+Elasticsearch mappings use `keyword` fields for facets and `text` fields for full-text search (`fullName`, `summary`).
+
+### Test Subset
+
+Unit tests use `apps/api/src/test/fixtures/mock-profiles.json`, a 4-row subset covering:
+
+- a normal profile with skills and interests
+- a profile with empty skills
+- a profile with a long summary
+- an invalid row missing required identifiers
+
+This keeps ETL and query-builder tests isolated from the full dataset and live services.
+
+## Testing
 
 ```sh
-turbo dev --filter=web
+pnpm --filter api test
 ```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
