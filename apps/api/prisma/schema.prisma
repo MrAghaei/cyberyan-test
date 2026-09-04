@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Profile {
+  id                      String   @id @default(uuid())
+  linkedinId              String?  @unique
+  fullName                String
+  firstName               String?
+  lastName                String?
+  gender                  String?
+  industry                String?
+  jobTitle                String?
+  jobTitleRole            String?
+  jobCompanyName          String?
+  jobCompanyIndustry      String?
+  locationName            String?
+  locationCountry         String?
+  locationRegion          String?
+  summary                 String?
+  skills                  Json?
+  interests               Json?
+  inferredYearsExperience Float?
+  inferredSalaryMin       Int?
+  inferredSalaryMax       Int?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([industry])
+  @@index([jobTitle])
+  @@index([jobCompanyName])
+  @@index([locationCountry])
+  @@index([gender])
+  @@index([jobTitleRole])
+}
