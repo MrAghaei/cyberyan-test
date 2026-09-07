@@ -1,5 +1,10 @@
 import type { RawLinkedInRow } from '../types/profile.types.js';
-import { toNullableString } from './string-utils.js';
+import {
+  isImplausibleLabel,
+  looksLikeIndustryLabel,
+  looksLikeJobTitle,
+  toNullableString,
+} from './string-utils.js';
 import { isCorruptedLinkedInRow } from './validate-row.js';
 
 export const LINKEDIN_CSV_COLUMNS = [
@@ -83,6 +88,7 @@ export const LINKEDIN_CSV_COLUMNS = [
 ] as const;
 
 const LINKEDIN_ID_INDEX = LINKEDIN_CSV_COLUMNS.indexOf('linkedin_id');
+const INDUSTRY_INDEX = LINKEDIN_CSV_COLUMNS.indexOf('industry');
 
 function rowToOrderedValues(row: RawLinkedInRow): string[] {
   return LINKEDIN_CSV_COLUMNS.map((column) => row[column] ?? '');
@@ -115,22 +121,54 @@ function shiftRowAfterLinkedInId(
   ].slice(0, LINKEDIN_CSV_COLUMNS.length);
 }
 
-function isPlausibleRepairedRow(row: RawLinkedInRow): boolean {
+function dropColumnsAt(
+  values: string[],
+  index: number,
+  dropCount: number,
+): string[] {
+  if (dropCount <= 0 || index < 0 || index >= values.length) {
+    return values;
+  }
+
+  return [
+    ...values.slice(0, index),
+    ...values.slice(index + dropCount),
+    ...Array.from({ length: dropCount }, () => ''),
+  ].slice(0, LINKEDIN_CSV_COLUMNS.length);
+}
+
+function scoreRepairedRow(row: RawLinkedInRow): number {
   if (isCorruptedLinkedInRow(row)) {
-    return false;
+    return Number.NEGATIVE_INFINITY;
   }
 
   const industry = toNullableString(row.industry);
-  if (industry && /^\d+$/.test(industry)) {
-    return false;
-  }
-
   const jobTitle = toNullableString(row.job_title);
-  if (!industry && !jobTitle) {
-    return false;
+
+  if (industry && isImplausibleLabel(industry)) {
+    return Number.NEGATIVE_INFINITY;
   }
 
-  return true;
+  if (jobTitle && isImplausibleLabel(jobTitle)) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  if (!industry && !jobTitle) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  let score = 0;
+  if (industry) {
+    score += looksLikeIndustryLabel(industry) ? 4 : 2;
+  }
+  if (jobTitle) {
+    score += looksLikeJobTitle(jobTitle) ? 4 : 2;
+    if (looksLikeIndustryLabel(jobTitle) && !looksLikeJobTitle(jobTitle)) {
+      score -= 2;
+    }
+  }
+
+  return score;
 }
 
 export function repairLinkedInRow(row: RawLinkedInRow): RawLinkedInRow {
@@ -138,33 +176,46 @@ export function repairLinkedInRow(row: RawLinkedInRow): RawLinkedInRow {
     return row;
   }
 
+  const candidates: RawLinkedInRow[] = [];
   const facebookUrl = toNullableString(row.facebook_url);
   const facebookId = toNullableString(row.facebook_id);
-  if (facebookUrl && /^\d+$/.test(facebookUrl) && facebookId && !/^\d+$/.test(facebookId)) {
-    const repairedRow = {
+
+  if (
+    facebookUrl &&
+    /^\d+$/.test(facebookUrl) &&
+    facebookId &&
+    !/^\d+$/.test(facebookId)
+  ) {
+    candidates.push({
       ...row,
       facebook_url: '',
       facebook_username: row.facebook_username ?? '',
       facebook_id: facebookUrl,
       industry: facebookId,
       job_title: row.industry,
-    };
-
-    if (isPlausibleRepairedRow(repairedRow)) {
-      return repairedRow;
-    }
+    });
   }
 
   const values = rowToOrderedValues(row);
 
-  for (const shiftAmount of [3, 2, 1]) {
-    const repairedValues = shiftRowAfterLinkedInId(values, shiftAmount);
-    const repairedRow = orderedValuesToRow(repairedValues);
+  for (const dropCount of [1, 2]) {
+    candidates.push(orderedValuesToRow(dropColumnsAt(values, INDUSTRY_INDEX, dropCount)));
+  }
 
-    if (isPlausibleRepairedRow(repairedRow)) {
-      return repairedRow;
+  for (const shiftAmount of [1, 2, 3]) {
+    candidates.push(orderedValuesToRow(shiftRowAfterLinkedInId(values, shiftAmount)));
+  }
+
+  let best: RawLinkedInRow | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const score = scoreRepairedRow(candidate);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
     }
   }
 
-  return row;
+  return best ?? row;
 }

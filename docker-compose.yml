@@ -61,6 +61,16 @@ services:
     volumes:
       - './docs/300 user linkedin.txt:/app/data/linkedin.txt:ro'
 
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '5173:80'
+
 volumes:
   postgres_data:
   elasticsearch_data:

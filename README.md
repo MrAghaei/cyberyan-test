@@ -13,8 +13,9 @@ This starts:
 - PostgreSQL on `localhost:5432`
 - Elasticsearch on `localhost:9200`
 - API on `http://localhost:3000`
+- Web UI on `http://localhost:5173`
 
-The API container runs migrations, seeds the LinkedIn dataset idempotently, and starts the server.
+The API container runs migrations, seeds the LinkedIn dataset idempotently, and starts the server. The web container serves the React app and proxies `/api` requests to the API.
 
 ## Local Development
 
@@ -39,11 +40,41 @@ pnpm --filter api db:migrate:deploy
 pnpm --filter api db:seed
 ```
 
-4. Run the API:
+4. Run the API and frontend (in separate terminals):
 
 ```sh
 pnpm --filter api dev
+pnpm --filter web dev
 ```
+
+The frontend runs on **http://localhost:5173** and proxies API requests to `http://localhost:3000` via `/api`.
+
+Optional frontend env:
+
+```sh
+cp apps/web/.env.example apps/web/.env
+```
+
+## Frontend
+
+Stack: React (Vite), TypeScript, Tailwind CSS, Shadcn-style UI primitives, TanStack Query, Axios.
+
+### Features
+
+- Keyword search across name, summary, and skills (server-side)
+- Industry and job title multi-select filters (AND logic)
+- Paginated results with loading and empty states
+- URL-synced search state for shareable links
+
+### Manual Test Checklist
+
+- [ ] Open `http://localhost:5173` and confirm profiles load
+- [ ] Search by keyword (e.g. `recruiting`) and verify results update after debounce
+- [ ] Select an industry and job title together; results match both filters
+- [ ] Clear filters resets dropdowns while keeping the search query
+- [ ] Pagination navigates between result pages
+- [ ] Empty state appears when no profiles match
+- [ ] `docker compose up --build` serves the UI at `http://localhost:5173`
 
 ## API Documentation
 

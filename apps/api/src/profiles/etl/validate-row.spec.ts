@@ -18,6 +18,21 @@ describe('isCorruptedLinkedInRow', () => {
     ).toBe(true);
   });
 
+  it('flags phone numbers in the industry column', () => {
+    expect(
+      isCorruptedLinkedInRow({
+        linkedin_id: '392124648',
+        facebook_url: 'facebook.com/levi.hale',
+        facebook_id: '689067399',
+        industry: '+15805831639',
+        job_title: 'automotive',
+        job_company_industry: 'automotive',
+        location_country: 'united states',
+        location_region: 'oklahoma',
+      }),
+    ).toBe(true);
+  });
+
   it('accepts valid rows', () => {
     expect(
       isCorruptedLinkedInRow({

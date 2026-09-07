@@ -1,5 +1,10 @@
 import type { RawLinkedInRow } from '../types/profile.types.js';
-import { toNullableString } from './string-utils.js';
+import {
+  isImplausibleLabel,
+  looksLikeIndustryLabel,
+  looksLikeJobTitle,
+  toNullableString,
+} from './string-utils.js';
 
 function looksLikeSocialUrl(value: string): boolean {
   return /facebook|linkedin|twitter|instagram|http|\.com|\.net/i.test(value);
@@ -7,12 +12,6 @@ function looksLikeSocialUrl(value: string): boolean {
 
 function looksLikeFacebookUsername(value: string): boolean {
   return /^[a-z0-9._-]+$/i.test(value) && !/^\d+$/.test(value);
-}
-
-function looksLikeIndustry(value: string): boolean {
-  return /\/|engineering|services|management|legal|health|construction|banking|aviation|aerospace|trucking|transportation|defense|energy|retail|hospitality/i.test(
-    value,
-  );
 }
 
 export function isCorruptedLinkedInRow(row: RawLinkedInRow): boolean {
@@ -32,6 +31,16 @@ export function isCorruptedLinkedInRow(row: RawLinkedInRow): boolean {
 
   const facebookId = toNullableString(row.facebook_id);
   if (facebookId && !/^\d+$/.test(facebookId) && !looksLikeSocialUrl(facebookId)) {
+    return true;
+  }
+
+  const industry = toNullableString(row.industry);
+  if (industry && isImplausibleLabel(industry)) {
+    return true;
+  }
+
+  const jobTitle = toNullableString(row.job_title);
+  if (jobTitle && isImplausibleLabel(jobTitle)) {
     return true;
   }
 

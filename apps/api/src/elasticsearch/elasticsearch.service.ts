@@ -39,16 +39,19 @@ export class ElasticsearchService implements OnModuleInit, OnModuleDestroy {
 
   async ensureIndex(): Promise<void> {
     const exists = await this.client.indices.exists({ index: this.indexName });
-    if (exists) {
+    if (!exists) {
+      await this.client.indices.create({
+        index: this.indexName,
+        mappings: PROFILE_INDEX_MAPPINGS,
+      });
+      this.logger.log(`Created Elasticsearch index "${this.indexName}"`);
       return;
     }
 
-    await this.client.indices.create({
+    await this.client.indices.putMapping({
       index: this.indexName,
-      mappings: PROFILE_INDEX_MAPPINGS,
+      properties: PROFILE_INDEX_MAPPINGS.properties,
     });
-
-    this.logger.log(`Created Elasticsearch index "${this.indexName}"`);
   }
 
   async bulkIndex(documents: ProfileDocument[]): Promise<void> {
