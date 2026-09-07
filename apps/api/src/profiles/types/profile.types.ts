@@ -12,7 +12,12 @@ export const PROFILE_INDEX_MAPPINGS = {
     lastName: { type: 'text' },
     gender: { type: 'keyword' },
     industry: { type: 'keyword' },
-    jobTitle: { type: 'keyword' },
+    jobTitle: {
+      type: 'keyword',
+      fields: {
+        text: { type: 'text' },
+      },
+    },
     jobTitleRole: { type: 'keyword' },
     jobCompanyName: { type: 'keyword' },
     jobCompanyIndustry: { type: 'keyword' },

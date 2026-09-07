@@ -21,6 +21,15 @@ describe('parseQueryArray', () => {
     ]);
   });
 
+  it('keeps commas that belong to a single facet label', () => {
+    expect(parseQueryArray('Assistant Chief, Engineering Service')).toEqual([
+      'Assistant Chief, Engineering Service',
+    ]);
+    expect(
+      parseQueryArray(['Assistant Chief, Engineering Service']),
+    ).toEqual(['Assistant Chief, Engineering Service']);
+  });
+
   it('returns undefined for empty values', () => {
     expect(parseQueryArray('')).toBeUndefined();
     expect(parseQueryArray([])).toBeUndefined();

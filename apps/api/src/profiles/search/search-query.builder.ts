@@ -1,3 +1,4 @@
+import { isImplausibleLabel } from '../etl/string-utils.js';
 import type { SearchProfilesDto } from '../dto/search-profiles.dto.js';
 
 type TermsFilterField =
@@ -77,13 +78,45 @@ export function buildSearchQuery(dto: SearchProfilesDto): Record<string, unknown
   const must: Record<string, unknown>[] = [];
 
   if (dto.q?.trim()) {
+    const query = dto.q.trim();
     must.push({
-      multi_match: {
-        query: dto.q.trim(),
-        fields: ['fullName^3', 'firstName^2', 'lastName^2', 'summary^2', 'skills', 'interests', 'jobTitle'],
-        type: 'best_fields',
-        fuzziness: 'AUTO',
-        operator: 'or',
+      bool: {
+        should: [
+          {
+            multi_match: {
+              query,
+              type: 'bool_prefix',
+              fields: [
+                'fullName^3',
+                'firstName^2',
+                'lastName^2',
+                'summary^2',
+                'jobTitle.text',
+                'skills',
+                'interests',
+              ],
+            },
+          },
+          {
+            multi_match: {
+              query,
+              type: 'best_fields',
+              fields: [
+                'fullName^3',
+                'firstName^2',
+                'lastName^2',
+                'summary^2',
+                'jobTitle.text',
+                'skills',
+                'interests',
+              ],
+              fuzziness: 'AUTO',
+              prefix_length: 1,
+              operator: 'or',
+            },
+          },
+        ],
+        minimum_should_match: 1,
       },
     });
   }
@@ -135,12 +168,12 @@ export function mapAggregationBuckets(
   key: string,
 ): string[] {
   const aggregation = aggregations?.[key] as
-    | { buckets?: Array<{ key: string }> }
+    | { buckets?: Array<{ key: string | number }> }
     | undefined;
 
   return (
     aggregation?.buckets
-      ?.map((bucket) => bucket.key)
-      .filter((value) => Boolean(value)) ?? []
+      ?.map((bucket) => String(bucket.key))
+      .filter((value) => Boolean(value) && !isImplausibleLabel(value)) ?? []
   );
 }

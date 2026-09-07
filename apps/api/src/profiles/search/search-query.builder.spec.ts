@@ -26,17 +26,40 @@ describe('buildSearchQuery', () => {
         bool: {
           must: [
             {
-              multi_match: {
-                query: 'recruiting',
-                fields: [
-                  'fullName^3',
-                  'firstName^2',
-                  'lastName^2',
-                  'summary^2',
-                  'skills',
-                  'interests',
-                  'jobTitle',
+              bool: {
+                should: [
+                  {
+                    multi_match: {
+                      query: 'recruiting',
+                      type: 'bool_prefix',
+                      fields: [
+                        'fullName^3',
+                        'firstName^2',
+                        'lastName^2',
+                        'summary^2',
+                        'jobTitle.text',
+                        'skills',
+                        'interests',
+                      ],
+                    },
+                  },
+                  {
+                    multi_match: {
+                      query: 'recruiting',
+                      type: 'best_fields',
+                      fields: [
+                        'fullName^3',
+                        'firstName^2',
+                        'lastName^2',
+                        'summary^2',
+                        'jobTitle.text',
+                        'skills',
+                        'interests',
+                      ],
+                    },
+                  },
                 ],
+                minimum_should_match: 1,
               },
             },
           ],
@@ -80,6 +103,22 @@ describe('buildSearchQuery', () => {
       },
     });
   });
+
+  it('uses prefix matching so short name queries can match', () => {
+    const dto = new SearchProfilesDto();
+    dto.q = 'ad';
+
+    const query = buildSearchQuery(dto);
+    const must = (query.query as { bool: { must: Array<Record<string, unknown>> } })
+      .bool.must[0] as {
+      bool: { should: Array<{ multi_match?: { type?: string; query?: string } }> };
+    };
+
+    expect(must.bool.should[0]?.multi_match).toMatchObject({
+      query: 'ad',
+      type: 'bool_prefix',
+    });
+  });
 });
 
 describe('buildFacetsQuery', () => {
@@ -105,5 +144,23 @@ describe('mapAggregationBuckets', () => {
     );
 
     expect(values).toEqual(['Civil Engineering', 'Education Management']);
+  });
+
+  it('drops numeric and contact-info facet values', () => {
+    const values = mapAggregationBuckets(
+      {
+        jobTitles: {
+          buckets: [
+            { key: 'Recruiting Manager' },
+            { key: 1010966868 },
+            { key: '+16304159331' },
+            { key: 'Noah.gossard@example.com' },
+          ],
+        },
+      },
+      'jobTitles',
+    );
+
+    expect(values).toEqual(['Recruiting Manager']);
   });
 });

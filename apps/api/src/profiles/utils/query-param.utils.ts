@@ -30,7 +30,7 @@ export function parseQueryArray(value: unknown): string[] | undefined {
   }
 
   const items = normalized
-    .split(',')
+    .split(/,(?!\s)/)
     .map((item) => item.trim())
     .filter(Boolean);
 
